@@ -14,11 +14,11 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 @app.route('/')
-def index():
+async def index():
     return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
-def upload_image():
+async def upload_image():
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'}), 400
     

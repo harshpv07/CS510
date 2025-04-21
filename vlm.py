@@ -147,7 +147,7 @@ generation_config = dict(max_new_tokens=1024, do_sample=True)
 # print(f'User: {question}\nAssistant: {response}')
 
 # single-image multi-round conversation (单图多轮对话)
-question = '<image>\nPlease describe the image in detail. Also what is the emotion expressed by the person in the image? '
+question = '<image>\nPlease describe the image in detail. Can you also count the total number of people in the image? You should return the number of people in the image. If you do not see any people in the image then you should return 0.'
 response, history = model.chat(tokenizer, pixel_values, question, generation_config, history=None, return_history=True)
 print(f'User: {question}\nAssistant: {response}')
 
