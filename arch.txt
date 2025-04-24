@@ -1,0 +1,2 @@
+There would be a prompt and image sent everytime the user clicks the button. The image is not see
+sent asyncrhonously. 
