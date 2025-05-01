@@ -14,7 +14,7 @@ def encode_image_to_base64(image_path):
 
 def test_upload_request():
     # API endpoint
-    url = "http://128.174.226.239:4512/upload"
+    url = "http://127.0.0.1:5000/upload"
     
     # Sample image path - replace with your actual image path
     image_path = "examples/image1.jpg"
