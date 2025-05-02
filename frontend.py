@@ -1,30 +1,56 @@
 import streamlit as st
-import cv2
-from PIL import Image
-import numpy as np
 import requests
 import io
-import time
+from PIL import Image
+import numpy as np
+import langchain 
 
 # Page setup
-st.set_page_config(page_title="Webcam Chat Assistant", layout="wide")
+st.set_page_config(
+    page_title="Chat Assistant", 
+    layout="wide",
+    initial_sidebar_state="expanded"  # Make sure sidebar is visible
+)
+
+# Custom CSS to adjust the layout
+st.markdown("""
+<style>
+    .main > div {
+        padding-right: 0.5rem;  /* Reduce right padding of main area */
+    }
+    
+    section[data-testid="stSidebar"] {
+        width: 450px !important;  /* Wider sidebar for chat */
+        background-color: #f5f5f5;
+        padding: 1rem;
+    }
+    
+    /* Give chat messages more space */
+    [data-testid="stChatMessageContent"] {
+        width: 100%;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Initialize session state for chat history if it doesn't exist
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Initialize camera index if it doesn't exist
-if "camera_index" not in st.session_state:
-    st.session_state.camera_index = 0
+# Initialize captured frame (for future image upload functionality)
+if "uploaded_image" not in st.session_state:
+    st.session_state.uploaded_image = None
 
 # Function to send request to the Flask server
-def get_llm_response(user_input, frame=None):
-    if frame is None:
-        return "No image available. Please enable the webcam to analyze visual content."
+def get_llm_response(user_input, image=None):
+    if image is None:
+        return "No image available. Please upload an image first to analyze visual content."
     
     try:
-        # Convert numpy array to PIL Image
-        pil_image = Image.fromarray(frame)
+        # Convert numpy array to PIL Image if needed
+        if isinstance(image, np.ndarray):
+            pil_image = Image.fromarray(image)
+        else:
+            pil_image = image
         
         # Save image to byte buffer
         img_byte_arr = io.BytesIO()
@@ -45,116 +71,44 @@ def get_llm_response(user_input, frame=None):
     except Exception as e:
         return f"Failed to get response: {str(e)}"
 
-# Page layout with columns
-col1, col2 = st.columns([0.6, 0.4])
+# Main content area - Image upload
+st.header("Image Upload")
 
-# Webcam column
-with col1:
-    st.header("Webcam Feed")
-    
-    # Webcam configuration
-    camera_index = st.number_input("Camera Index", min_value=0, max_value=10, value=st.session_state.camera_index, step=1)
-    st.session_state.camera_index = int(camera_index)
-    
-    # Create video capture button
-    start_button = st.button("Start Webcam")
-    stop_button = st.button("Stop Webcam")
-    
-    # Create placeholder for webcam feed
-    webcam_placeholder = st.empty()
-    
-    if start_button:
-        st.session_state.webcam_running = True
-    
-    if stop_button:
-        st.session_state.webcam_running = False
-        
-    # Initialize webcam_running if not present
-    if "webcam_running" not in st.session_state:
-        st.session_state.webcam_running = False
-    
-    if st.session_state.webcam_running:
-        # Create video capture object
-        cap = cv2.VideoCapture(st.session_state.camera_index)
-        
-        # Try different backend if default fails
-        if not cap.isOpened():
-            # Try DirectShow backend on Windows (alternative method)
-            cap = cv2.VideoCapture(st.session_state.camera_index + cv2.CAP_DSHOW)
-        
-        # Try to set resolution
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        
-        # Check if camera opened successfully
-        if cap.isOpened():
-            st.success("Webcam accessed successfully!")
-            
-            # Capture frames in a loop to get most recent frame
-            frame_counter = 0
-            max_frames = 10  # Capture up to 10 frames to get a good one
-            
-            while frame_counter < max_frames:
-                ret, frame = cap.read()
-                if ret:
-                    # Convert BGR to RGB for display
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    st.session_state.current_frame = frame_rgb
-                    frame_counter += 1
-                    # Short delay to allow camera to adjust
-                    time.sleep(0.1)
-                else:
-                    break
-            
-            # Display the last captured frame
-            if hasattr(st.session_state, 'current_frame') and st.session_state.current_frame is not None:
-                webcam_placeholder.image(st.session_state.current_frame, channels="RGB", use_column_width=True)
-            else:
-                webcam_placeholder.error("Failed to capture image from webcam")
-                st.info("Try changing the camera index above")
-            
-            # Release webcam
-            cap.release()
-        else:
-            webcam_placeholder.error(f"Could not access webcam with index {st.session_state.camera_index}")
-            st.info("Try changing the camera index or try these troubleshooting tips:")
-            st.info("1. Close other applications using your webcam")
-            st.info("2. Restart your computer")
-            st.info("3. Check if your webcam is properly connected")
-            st.info("4. Try a different camera index (0, 1, or 2)")
-            st.session_state.webcam_running = False
-    else:
-        webcam_placeholder.info("Click 'Start Webcam' to enable the camera")
-        if hasattr(st.session_state, 'current_frame') and st.session_state.current_frame is not None:
-            webcam_placeholder.image(st.session_state.current_frame, channels="RGB", use_column_width=True)
+# Allow user to upload an image
+uploaded_file = st.file_uploader("Upload an image to analyze", type=["jpg", "jpeg", "png"])
 
-# Chat column
-with col2:
-    st.header("Chat with Assistant")
+# Display the uploaded image
+if uploaded_file is not None:
+    # Read the image
+    image = Image.open(uploaded_file)
+    st.session_state.uploaded_image = image
     
-    # Display chat messages
-    chat_container = st.container()
-    with chat_container:
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.write(message["content"])
+    # Display the image
+    st.image(image, caption="Uploaded Image", use_column_width=True)
+    st.success("Image uploaded successfully!")
+else:
+    st.info("Please upload an image to analyze")
+
+# Chat Interface
+st.header("Chat with Assistant")
+
+# Display chat messages from history
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# React to user input
+if prompt := st.chat_input("Type your message here..."):
+    # Display user message in chat message container
+    st.chat_message("user").markdown(prompt)
+    # Add user message to chat history
+    st.session_state.messages.append({"role": "user", "content": prompt})
     
-    # User input
-    user_input = st.chat_input("Type your message here...")
+    # Get LLM response using the uploaded image
+    response = get_llm_response(prompt, st.session_state.uploaded_image)
     
-    # Process user input
-    if user_input:
-        # Add user message to chat history
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        
-        # Get current frame if webcam is running
-        current_frame = st.session_state.get("current_frame", None)
-        
-        # Get LLM response
-        response = get_llm_response(user_input, current_frame)
-        
-        # Add assistant response to chat history
-        st.session_state.messages.append({"role": "assistant", "content": response})
-        
-        # Rerun to update the UI
-        st.experimental_rerun()
+    # Display assistant response in chat message container
+    with st.chat_message("assistant"):
+        st.markdown(response)
+    # Add assistant response to chat history
+    st.session_state.messages.append({"role": "assistant", "content": response})
