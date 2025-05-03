@@ -50,6 +50,7 @@ def upload_image():
         base64_image = data['image']
         prompt = data['prompt']
         
+        print(prompt , base64_image)
         print(f"Received prompt: {prompt}")
         
         # Remove the data URL prefix if present (e.g., "data:image/jpeg;base64,")
@@ -119,4 +120,4 @@ def upload_image():
         }), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)

@@ -3,7 +3,104 @@ import requests
 import io
 from PIL import Image
 import numpy as np
-import langchain 
+from langchain.memory import ConversationBufferMemory
+from langchain.schema import HumanMessage, AIMessage
+
+import base64
+import cv2
+from io import BytesIO
+
+if 'image_str' not in st.session_state:
+    st.session_state.image_str = None
+
+def capture_image_from_camera():
+    """
+    Captures an image from the user's webcam and returns it as a base64 encoded string.
+    
+    Returns:
+        str or None: Base64 encoded image string if successful, None otherwise
+    """
+    try:
+        # Initialize webcam
+        cap = cv2.VideoCapture(0)
+        
+        if not cap.isOpened():
+            st.error("Unable to access webcam. Please check your camera permissions.")
+            return None
+        
+        # Create a placeholder for the camera feed
+        camera_placeholder = st.empty()
+        
+        # Display instructions
+        st.info("Capturing image automatically...")
+        
+        # Add a small delay to allow camera to initialize
+        import time
+        time.sleep(1)
+        
+        # Read frame from webcam
+        ret, frame = cap.read()
+        
+        if not ret:
+            st.error("Failed to capture image from webcam")
+            cap.release()
+            return None
+        
+        # Convert BGR to RGB (for display in Streamlit)
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        
+        # Display the captured frame
+        camera_placeholder.image(frame_rgb, channels="RGB", use_column_width=True)
+        
+        # Release the camera
+        cap.release()
+        
+        # Convert the captured frame to PIL Image
+        captured_image = Image.fromarray(frame_rgb)
+        
+        # Save the image to the photo_store folder
+        import os
+        os.makedirs("photo_store", exist_ok=True)
+        image_path = f"photo_store/captured_image.jpg"
+        captured_image.save(image_path)
+        
+        # Convert to base64
+        buffered = BytesIO()
+        captured_image.save(buffered, format="JPEG")
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+        # Store in session state and display confirmation
+        st.session_state["image_str"] = img_str
+        print("base64 encoded image", img_str)
+        st.success(f"Image captured successfully and saved to {image_path}!")
+        
+        return img_str
+    
+    except Exception as e:
+        st.error(f"Error capturing image: {str(e)}")
+        return None
+
+def encode_image_to_base64(image):
+    """
+    Encodes a PIL Image to base64 string.
+    
+    Args:
+        image (PIL.Image): The image to encode
+        
+    Returns:
+        str: Base64 encoded string of the image
+    """
+    if image is None:
+        return None
+    
+    try:
+        buffered = BytesIO()
+        image.save(buffered, format="JPEG")
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        return img_str
+    except Exception as e:
+        st.error(f"Error encoding image: {str(e)}")
+        return None
 
 # Page setup
 st.set_page_config(
@@ -36,60 +133,63 @@ st.markdown("""
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# Initialize LangChain memory if it doesn't exist
+if "memory" not in st.session_state:
+    st.session_state.memory = ConversationBufferMemory(return_messages=True)
+
 # Initialize captured frame (for future image upload functionality)
 if "uploaded_image" not in st.session_state:
     st.session_state.uploaded_image = None
 
 # Function to send request to the Flask server
-def get_llm_response(user_input, image=None):
-    if image is None:
-        return "No image available. Please upload an image first to analyze visual content."
-    
+def get_llm_response(user_input):
+   
     try:
         # Convert numpy array to PIL Image if needed
-        if isinstance(image, np.ndarray):
-            pil_image = Image.fromarray(image)
+        
+        
+        # Add conversation history to the prompt
+        chat_history = ""
+        memory_messages = st.session_state.memory.load_memory_variables({})
+        if "history" in memory_messages and memory_messages["history"]:
+            for message in memory_messages["history"]:
+                if isinstance(message, HumanMessage):
+                    chat_history += f"Human: {message.content}\n"
+                elif isinstance(message, AIMessage):
+                    chat_history += f"AI: {message.content}\n"
+        
+        # Prepare prompt with context
+        context_prompt = f"Previous conversation:\n{chat_history}\n\nCurrent question: {user_input}"
+        
+        # Capture image or use existing one
+        if st.session_state.image_str is None:
+            img_str = capture_image_from_camera()
+            if img_str is None:
+                return "Failed to capture image. Please try again."
         else:
-            pil_image = image
-        
-        # Save image to byte buffer
-        img_byte_arr = io.BytesIO()
-        pil_image.save(img_byte_arr, format='JPEG')
-        img_byte_arr.seek(0)
-        
-        # Prepare files and data for the request
-        files = {'image': ('image.jpg', img_byte_arr, 'image/jpeg')}
-        data = {'prompt': user_input}
+            img_str = st.session_state.image_str
+            
+        data = {'prompt': context_prompt, "image": img_str}
         
         # Send request to Flask server
-        response = requests.post('http://localhost:5000/analyze', files=files, data=data)
+        response = requests.post('http://127.0.0.1:5000/upload', json=data, headers={'Content-Type': 'application/json'})
         
         if response.status_code == 200:
-            return response.json()['response']
+            response_text = response.json()['response']
+            # Save to memory
+            st.session_state.memory.save_context(
+                {"input": user_input},
+                {"output": response_text}
+            )
+            return response_text
         else:
             return f"Error from server: {response.text}"
     except Exception as e:
         return f"Failed to get response: {str(e)}"
 
-# Main content area - Image upload
-st.header("Image Upload")
 
-# Allow user to upload an image
-uploaded_file = st.file_uploader("Upload an image to analyze", type=["jpg", "jpeg", "png"])
 
-# Display the uploaded image
-if uploaded_file is not None:
-    # Read the image
-    image = Image.open(uploaded_file)
-    st.session_state.uploaded_image = image
-    
-    # Display the image
-    st.image(image, caption="Uploaded Image", use_column_width=True)
-    st.success("Image uploaded successfully!")
-else:
-    st.info("Please upload an image to analyze")
 
-# Chat Interface
 st.header("Chat with Assistant")
 
 # Display chat messages from history
@@ -105,7 +205,7 @@ if prompt := st.chat_input("Type your message here..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     
     # Get LLM response using the uploaded image
-    response = get_llm_response(prompt, st.session_state.uploaded_image)
+    response = get_llm_response(prompt)
     
     # Display assistant response in chat message container
     with st.chat_message("assistant"):

@@ -283,9 +283,6 @@ class embeddingModel_openai:
 
 if __name__ == "__main__":
     embedding_model = embeddingModel_openai()
-    embedding_model.get_embedding("Hello, how are you?")
-    chunks = embedding_model.chunk_text("Hello, how are you?. This could be a long text and we need to chunk it into smaller chunks. Could you also chunking this text into a more word document ")
-    embedding_model.store_document("how do i deal with stress? ",  "The face of the user is sad and confused.", "sad, confused")
     
     # Example usage for chunk_and_embed_text
     sample_text_to_chunk = "This is a longer document that needs to be broken down into several pieces. Each piece will be embedded and stored separately in the vector database for efficient retrieval later on. We are testing the chunk_and_embed_text functionality."
@@ -311,3 +308,5 @@ if __name__ == "__main__":
     else:
         print("No recent documents found or an error occurred.")
   
+
+  # Retreiver is here from the rag. 
