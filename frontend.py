@@ -28,12 +28,7 @@ def capture_image_from_camera():
             st.error("Unable to access webcam. Please check your camera permissions.")
             return None
         
-        # Create a placeholder for the camera feed
-        camera_placeholder = st.empty()
-        
-        # Display instructions
-        st.info("Capturing image automatically...")
-        
+       
         # Add a small delay to allow camera to initialize
         import time
         time.sleep(1)
@@ -50,7 +45,7 @@ def capture_image_from_camera():
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
         # Display the captured frame
-        camera_placeholder.image(frame_rgb, channels="RGB", use_column_width=True)
+        #camera_placeholder.image(frame_rgb, channels="RGB", use_column_width=True)
         
         # Release the camera
         cap.release()
