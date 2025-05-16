@@ -5,13 +5,17 @@ from PIL import Image
 import numpy as np
 from langchain.memory import ConversationBufferMemory
 from langchain.schema import HumanMessage, AIMessage
-
+import speech_recognition as sr
 import base64
 import cv2
 from io import BytesIO
+from voice_package import ElevenLabsVoice
 
 if 'image_str' not in st.session_state:
     st.session_state.image_str = None
+
+if 'listening' not in st.session_state:
+    st.session_state.listening = False
 
 def capture_image_from_camera():
     """
@@ -97,6 +101,34 @@ def encode_image_to_base64(image):
         st.error(f"Error encoding image: {str(e)}")
         return None
 
+def listen_to_speech():
+    """
+    Captures speech from the microphone and converts it to text.
+    
+    Returns:
+        str or None: The recognized text if successful, None otherwise
+    """
+    try:
+        recognizer = sr.Recognizer()
+        with sr.Microphone() as source:
+            st.info("Listening... Speak now.")
+            recognizer.adjust_for_ambient_noise(source)
+            audio = recognizer.listen(source, timeout=5)
+            st.info("Processing speech...")
+            
+        try:
+            text = recognizer.recognize_google(audio)
+            return text
+        except sr.UnknownValueError:
+            st.error("Could not understand audio. Please try again.")
+            return None
+        except sr.RequestError as e:
+            st.error(f"Could not request results; {e}")
+            return None
+    except Exception as e:
+        st.error(f"Error capturing speech: {str(e)}")
+        return None
+
 # Page setup
 st.set_page_config(
     page_title="Chat Assistant", 
@@ -154,7 +186,17 @@ def get_llm_response(user_input):
                     chat_history += f"AI: {message.content}\n"
         
         # Prepare prompt with context
-        context_prompt = f"Previous conversation:\n{chat_history}\n\nCurrent question: {user_input}"
+        base_prompt = """
+            You are a warm, compassionate mental health assistant designed to offer emotional support and reflective conversation. 
+            You receive the current user message, an image (which provides contextual or emotional insight), and a history of previous conversation for continuity. 
+            Always respond in a thoughtful, empathetic paragraph, never as bullet points or short answers. 
+            Use the image to understand emotional cues or situational context, and incorporate relevant parts of the conversation history to stay consistent and build trust. 
+            Your goal is not to diagnose or give medical advice, but to validate feelings, offer grounding reflections, and gently guide users toward greater emotional clarity and calm. Avoid generic positivity; instead, be human-like, supportive, and present.
+
+
+        """
+        
+        context_prompt = f"Previous conversation:\n{chat_history}\n\nCurrent question: {user_input}\n\n{base_prompt}"
         
         # Capture image or use existing one
         if st.session_state.image_str is None:
@@ -182,8 +224,28 @@ def get_llm_response(user_input):
     except Exception as e:
         return f"Failed to get response: {str(e)}"
 
-
-
+def speak_response(response_text):
+    """
+    Converts text to speech using ElevenLabs.
+    
+    Args:
+        response_text (str): The text to convert to speech
+    """
+    try:
+        voice_generator = ElevenLabsVoice()
+        audio_data = voice_generator.generate_voice(response_text)
+        
+        if audio_data:
+            # Save audio to file
+            output_path = "response_audio.mp3"
+            voice_generator.save_audio(audio_data, output_path)
+            
+            # Play the audio in Streamlit
+            st.audio(output_path)
+        else:
+            st.error("Failed to generate speech")
+    except Exception as e:
+        st.error(f"Error generating speech: {str(e)}")
 
 st.header("Chat with Assistant")
 
@@ -192,18 +254,53 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# React to user input
-if prompt := st.chat_input("Type your message here..."):
+# Add a button to start voice recording
+if st.button("🎤 Speak to Assistant"):
+    st.session_state.listening = True
+
+# React to voice input
+if st.session_state.listening:
+    prompt = listen_to_speech()
+    
+    if prompt:
+        st.session_state.listening = False
+        # Display user message in chat message container
+        st.chat_message("user").markdown(prompt)
+        # Add user message to chat history
+        print("prompt", prompt)
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        
+        # Get LLM response using the uploaded image
+        response = get_llm_response(prompt)
+        
+        # Display assistant response in chat message container
+        with st.chat_message("assistant"):
+            st.markdown(response)
+            
+        # Convert response to speech
+        speak_response(response)
+        
+        # Add assistant response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": response})
+
+# Keep the text input as fallback
+prompt_text = st.chat_input("Type your message here (or use the speak button)...")
+
+if prompt_text:
     # Display user message in chat message container
-    st.chat_message("user").markdown(prompt)
+    st.chat_message("user").markdown(prompt_text)
     # Add user message to chat history
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.session_state.messages.append({"role": "user", "content": prompt_text})
     
     # Get LLM response using the uploaded image
-    response = get_llm_response(prompt)
+    response = get_llm_response(prompt_text)
     
     # Display assistant response in chat message container
     with st.chat_message("assistant"):
         st.markdown(response)
+        
+    # Convert response to speech
+    speak_response(response)
+    
     # Add assistant response to chat history
     st.session_state.messages.append({"role": "assistant", "content": response})

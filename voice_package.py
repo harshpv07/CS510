@@ -70,3 +70,11 @@ class ElevenLabsVoice:
         except Exception as e:
             print(f"Error saving audio file: {e}")
             return False
+
+    
+
+if __name__ == "__main__":
+    voice = ElevenLabsVoice()
+    audio_data = voice.generate_voice("Hello, how are you?")
+    voice.save_audio(audio_data)
+
